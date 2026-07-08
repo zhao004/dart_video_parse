@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:dart_video_parse/dart_video_parse.dart';
+import 'package:dart_video_parse/providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -18,6 +22,14 @@ void main() {
     test('按优先级轮询并返回首个有效结果', () async {
       final parser = VideoParser(
         providers: [
+          TestVideoProvider(
+            provider: VideoParseProvider.parsevideo,
+            displayName: '空媒体源',
+            priority: 1,
+            baseUrl: 'https://empty.example',
+            handler: (url) async =>
+                ParseResult(type: 'video', title: '只有标题没有媒体', sourceUrl: url),
+          ),
           TestVideoProvider(
             provider: VideoParseProvider.kit9,
             displayName: '失败源',
@@ -134,6 +146,79 @@ void main() {
       expect(json['code'], ParseCodes.success);
       expect(json['msg'], '解析成功');
       expect((json['data'] as Map<String, Object?>)['parser_used'], 'kit9');
+    });
+
+    test('只有元数据没有媒体资源时结果无效', () {
+      const result = ParseResult(type: 'video', title: '只有标题');
+
+      expect(result.isValid, isFalse);
+    });
+
+    test('SPAPI 重试请求使用首页返回的动态 AppKey', () async {
+      const dynamicAppKey = 'dynamic-session-key';
+      const inputUrl = 'https://example.com/share';
+      var postWasEncryptedWithDynamicKey = false;
+      final dio = Dio()
+        ..interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (options, handler) {
+              if (options.method == 'GET' &&
+                  options.uri.toString() == 'https://spapi.cn/') {
+                handler.resolve(
+                  Response<Object?>(
+                    requestOptions: options,
+                    statusCode: 200,
+                    headers: Headers.fromMap({
+                      'set-cookie': ['KFAPI_APPKEY=$dynamicAppKey; Path=/'],
+                    }),
+                  ),
+                );
+                return;
+              }
+
+              if (options.method == 'POST' &&
+                  options.uri.host == 'api.spapi.cn') {
+                final plainRequest = CryptoHelpers.opensslAesDecrypt(
+                  options.data.toString(),
+                  dynamicAppKey,
+                );
+                postWasEncryptedWithDynamicKey = plainRequest == inputUrl;
+                final payload = jsonEncode({
+                  'status': '101',
+                  'data': {
+                    'title': '动态 key 视频',
+                    'video': 'https://cdn.example/spapi.mp4',
+                  },
+                });
+                handler.resolve(
+                  Response<String>(
+                    requestOptions: options,
+                    statusCode: 200,
+                    data: CryptoHelpers.opensslAesEncrypt(
+                      payload,
+                      dynamicAppKey,
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              handler.reject(
+                DioException(
+                  requestOptions: options,
+                  error: '未预期请求: ${options.method} ${options.uri}',
+                ),
+              );
+            },
+          ),
+        );
+      final parser = VideoParser(dio: dio, providers: const [SpapiProvider()]);
+
+      final response = await parser.parse(inputUrl);
+
+      expect(response.success, isTrue);
+      expect(postWasEncryptedWithDynamicKey, isTrue);
+      expect(response.data?.videos.single.url, 'https://cdn.example/spapi.mp4');
     });
   });
 }

@@ -81,7 +81,9 @@ class SpapiProvider extends _JsonProvider {
     String appKeyCookie,
   ) {
     final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final aesKey = appKeyCookie.isEmpty ? _defaultAesKey : _defaultAesKey;
+    final aesKey = appKeyCookie.trim().isEmpty
+        ? _defaultAesKey
+        : appKeyCookie.trim();
     final body = CryptoHelpers.opensslAesEncrypt(url, aesKey);
     final sign = ParseUtils.md5Hex(
       '${_defaultD}0x${timestamp.toRadixString(16)}$_defaultAppKey',

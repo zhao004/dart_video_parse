@@ -50,10 +50,12 @@ class ParseResult {
   final String parserUsed;
 
   /// 结果是否包含可消费业务数据；轮询时用它过滤空响应。
+  ///
+  /// 设计意图：标题、描述等元数据不能被 Flutter 播放器直接消费，
+  /// 因此只有非空视频或图片资源才视为有效解析结果，避免提前截断后续轮询。
   bool get isValid =>
       videos.any((item) => item.url.trim().isNotEmpty) ||
-      images.any((item) => item.url.trim().isNotEmpty) ||
-      title.trim().isNotEmpty;
+      images.any((item) => item.url.trim().isNotEmpty);
 
   ParseResult copyWith({String? parserUsed}) {
     return ParseResult(
