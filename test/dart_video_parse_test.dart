@@ -145,13 +145,53 @@ void main() {
 
       expect(json['code'], ParseCodes.success);
       expect(json['msg'], '解析成功');
-      expect((json['data'] as Map<String, Object?>)['parser_used'], 'kit9');
+      final data = json['data'] as Map<String, Object?>;
+      expect(data['parser_used'], 'kit9');
+      expect(data['type'], 'video');
+      expect(data['media_type'], 'video');
+      expect(data['is_video'], isTrue);
+      expect(data['is_gallery'], isFalse);
     });
 
     test('只有元数据没有媒体资源时结果无效', () {
       const result = ParseResult(type: 'video', title: '只有标题');
 
       expect(result.isValid, isFalse);
+    });
+
+    test('媒体类型根据有效资源统一归一，避免前端混淆', () {
+      const mixed = ParseResult(
+        type: 'gallery',
+        videos: [VideoItem(url: 'https://cdn.example/video.mp4')],
+        images: [ImageItem(url: 'https://cdn.example/cover.jpg')],
+      );
+      const gallery = ParseResult(
+        type: 'video',
+        images: [ImageItem(url: 'https://cdn.example/1.jpg')],
+      );
+      const invalid = ParseResult(
+        type: 'unexpected',
+        videos: [VideoItem(url: ' ')],
+        images: [ImageItem(url: '')],
+      );
+
+      expect(mixed.mediaType, ParseMediaType.video);
+      expect(mixed.isVideo, isTrue);
+      expect(mixed.isGallery, isFalse);
+      expect(mixed.toJson()['type'], 'video');
+      expect(mixed.toJson()['declared_type'], 'gallery');
+      expect(mixed.toJson()['videos_count'], 1);
+      expect(mixed.toJson()['images_count'], 1);
+
+      expect(gallery.mediaType, ParseMediaType.gallery);
+      expect(gallery.isVideo, isFalse);
+      expect(gallery.isGallery, isTrue);
+      expect(gallery.toJson()['type'], 'gallery');
+      expect(gallery.toJson()['media_type'], 'gallery');
+
+      expect(invalid.isValid, isFalse);
+      expect(invalid.mediaType, ParseMediaType.unknown);
+      expect(invalid.toJson()['type'], 'unknown');
     });
 
     test('SPAPI 重试请求使用首页返回的动态 AppKey', () async {
