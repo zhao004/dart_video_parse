@@ -134,32 +134,24 @@ class KukuToolProvider extends _JsonProvider {
   ParseResult _normalize(Map<String, Object?> data, String sourceUrl) {
     final type = safeString(data['type']).toLowerCase();
     final title = safeString(data['title'] ?? data['desc']);
-    final videoUrl = safeString(data['url']);
-    final videos = <VideoItem>[
-      if (videoUrl.isNotEmpty) VideoItem(url: videoUrl, quality: '原画'),
-    ];
-    final images = normalizeImages(data['pics']);
-    if (type == 'video') {
-      if (videos.isEmpty) {
-        throw const ProviderException('KuKuTool 未返回视频直链');
-      }
-      return ParseResult(
-        type: 'video',
-        title: title,
-        cover: safeString(data['cover']),
-        videos: videos,
-        sourceUrl: sourceUrl,
-        parserUsed: name,
-      );
-    }
-    if (images.isEmpty) {
-      throw const ProviderException('KuKuTool 未返回图集资源');
+    final media = normalizeMediaResources([
+      data['url'],
+      data['pics'],
+    ], fallbackKind: type == 'video' ? 'video' : 'image');
+    if (media.isEmpty) {
+      throw const ProviderException('KuKuTool 未返回可用资源');
     }
     return ParseResult(
-      type: 'gallery',
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: title,
-      cover: safeString(data['cover'], defaultValue: images.first.url),
-      images: images,
+      cover: safeString(
+        data['cover'],
+        defaultValue: media.images.isEmpty ? '' : media.images.first.url,
+      ),
+      videos: media.videos,
+      images: media.images,
       sourceUrl: sourceUrl,
       parserUsed: name,
     );

@@ -96,7 +96,10 @@ class SpapiProvider extends _JsonProvider {
   }
 
   String _extractAppKey(Headers headers) {
-    for (final value in headers.map['set-cookie'] ?? const <String>[]) {
+    final cookies = headers.map.entries
+        .where((entry) => entry.key.toLowerCase() == 'set-cookie')
+        .expand((entry) => entry.value);
+    for (final value in cookies) {
       final match = RegExp(r'KFAPI_APPKEY=([^;]*)').firstMatch(value);
       if (match != null) {
         return match.group(1) ?? '';
@@ -107,29 +110,22 @@ class SpapiProvider extends _JsonProvider {
 
   ParseResult _normalize(Map<String, Object?> data, String sourceUrl) {
     final inner = ParseUtils.mapValue(data['data']);
-    final images = normalizeImages(
-      inner['images'] ?? inner['image_list'] ?? inner['pics'],
-    );
-    final videoUrl = safeString(
+    final media = normalizeMediaResources([
       inner['video'] ?? inner['video_url'] ?? inner['url'],
-    );
-    final videos = <VideoItem>[
-      if (videoUrl.isNotEmpty) VideoItem(url: videoUrl, quality: '原画'),
-    ];
-    final backupUrl = safeString(inner['url']);
-    if (backupUrl.isNotEmpty && backupUrl != videoUrl) {
-      videos.add(VideoItem(url: backupUrl, quality: '备用'));
-    }
+      inner['images'] ?? inner['image_list'] ?? inner['pics'],
+    ]);
     return ParseResult(
-      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: safeString(inner['title'] ?? inner['desc'] ?? data['title']),
       author: safeString(
         inner['author'] ?? inner['nickname'] ?? data['author'],
       ),
       cover: safeString(inner['image'] ?? inner['cover'] ?? inner['cover_url']),
       duration: safeString(inner['duration']),
-      videos: videos,
-      images: images,
+      videos: media.videos,
+      images: media.images,
       music: normalizeMusic(inner),
       platform: safeString(inner['platform']),
       sourceUrl: sourceUrl,

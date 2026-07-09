@@ -42,15 +42,38 @@ class Kit9Provider extends _JsonProvider {
       rawData = rawData.isEmpty ? <String, Object?>{} : rawData.first;
     }
     final data = asMap(rawData, 'Kit9 返回结果结构异常');
-    final videoUrl = safeString(
-      data['video_link'] ?? data['video_url'] ?? data['url'],
-    );
-    if (videoUrl.isEmpty) {
-      throw const ProviderException('Kit9 未返回视频直链');
+    final resource = data['video_link'] ?? data['video_url'] ?? data['url'];
+    final videos = <VideoItem>[];
+    final images = <ImageItem>[];
+    for (final item in ParseUtils.listValue(resource)) {
+      final map = ParseUtils.mapValue(item);
+      final resourceUrl = safeString(map['url'] ?? item);
+      if (!ParseUtils.isHttpUrl(resourceUrl)) {
+        continue;
+      }
+      final resourceType = safeString(map['type']).toLowerCase();
+      if (ParseUtils.isImageUrl(resourceUrl) ||
+          (resourceType == 'image' && !ParseUtils.isVideoUrl(resourceUrl))) {
+        images.add(ImageItem(url: resourceUrl));
+      } else if (ParseUtils.isVideoUrl(resourceUrl) ||
+          (resourceType == 'video' && !ParseUtils.isImageUrl(resourceUrl))) {
+        videos.add(VideoItem(url: resourceUrl, quality: '原画'));
+      }
+    }
+    final scalarUrl = safeString(resource);
+    if (videos.isEmpty && images.isEmpty && ParseUtils.isHttpUrl(scalarUrl)) {
+      if (ParseUtils.isImageUrl(scalarUrl)) {
+        images.add(ImageItem(url: scalarUrl));
+      } else {
+        videos.add(VideoItem(url: scalarUrl, quality: '原画'));
+      }
+    }
+    if (videos.isEmpty && images.isEmpty) {
+      throw const ProviderException('Kit9 未返回可用视频或图集资源');
     }
     final author = ParseUtils.mapValue(data['author']);
     return ParseResult(
-      type: 'video',
+      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
       title: safeString(
         data['video_title'] ?? data['video_desc'] ?? data['title'],
       ),
@@ -59,7 +82,8 @@ class Kit9Provider extends _JsonProvider {
         data['video_cover'] ?? data['cover'] ?? author['avatar'],
       ),
       duration: safeString(data['video_time'] ?? data['duration']),
-      videos: [VideoItem(url: videoUrl, quality: '原画')],
+      videos: videos,
+      images: images,
       music: normalizeMusic(data),
       platform: safeString(payload['parsing_type'] ?? payload['type']),
       sourceUrl: normalizedUrl,

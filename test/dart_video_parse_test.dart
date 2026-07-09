@@ -194,6 +194,170 @@ void main() {
       expect(invalid.toJson()['type'], 'unknown');
     });
 
+    test('资源 URL 类型判断能识别抖音图集图片和视频直链', () {
+      const imageUrl =
+          'https://p5-ex-gddgtc-sign.douyinpic.com/tos-cn-i-0813c000-ce/'
+          'sample~tplv-dy-aweme-images-ds-rs-v1:1920:1280:q80.jpeg'
+          '?sc=image&biz_tag=aweme_images';
+      const videoUrl =
+          'https://v11-default.365yg.com/token/video/tos/cn/path/'
+          '?mime_type=video_mp4&playAddrKey=v0200';
+      const textValue = '阳朔风光#风光摄影 #每一帧都是壁纸';
+
+      expect(ParseUtils.isHttpUrl(imageUrl), isTrue);
+      expect(ParseUtils.isImageUrl(imageUrl), isTrue);
+      expect(ParseUtils.isVideoUrl(imageUrl), isFalse);
+
+      expect(ParseUtils.isHttpUrl(videoUrl), isTrue);
+      expect(ParseUtils.isVideoUrl(videoUrl), isTrue);
+      expect(ParseUtils.isImageUrl(videoUrl), isFalse);
+
+      expect(ParseUtils.isHttpUrl(textValue), isFalse);
+      expect(ParseUtils.isImageUrl(textValue), isFalse);
+      expect(ParseUtils.isVideoUrl(textValue), isFalse);
+    });
+
+    test('Kit9 图集列表资源不会被误判为视频直链', () async {
+      final dio = Dio()
+        ..interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (options, handler) {
+              handler.resolve(
+                Response<Object?>(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: {
+                    'code': 200,
+                    'type': 'douyin',
+                    'data': {
+                      'video_title': '图集标题',
+                      'video_link': [
+                        {
+                          'type': 'image',
+                          'url':
+                              'https://p3-pc-sign.douyinpic.com/a.webp'
+                              '?biz_tag=aweme_images&sc=image',
+                        },
+                        {
+                          'type': 'image',
+                          'url':
+                              'https://p3-pc-sign.douyinpic.com/b.webp'
+                              '?biz_tag=aweme_images&sc=image',
+                        },
+                      ],
+                    },
+                  },
+                ),
+              );
+            },
+          ),
+        );
+
+      final result = await const Kit9Provider().parse(
+        'https://v.douyin.com/gallery',
+        dio,
+      );
+
+      expect(result.mediaType, ParseMediaType.gallery);
+      expect(result.videos, isEmpty);
+      expect(result.images, hasLength(2));
+      expect(result.toJson()['type'], 'gallery');
+      expect(result.toJson()['images_count'], 2);
+    });
+
+    test('多个公开源站不会把图集资源误收进视频列表', () async {
+      const imageUrl =
+          'https://p3-pc-sign.douyinpic.com/tos-cn-i-demo/a.webp'
+          '?biz_tag=aweme_images&sc=image';
+      const sourceUrl = 'https://v.douyin.com/gallery';
+      final cases = <({String name, BaseVideoProvider provider, Object? data})>[
+        (
+          name: 'bugpk',
+          provider: const BugPkProvider(),
+          data: {
+            'code': 200,
+            'data': {
+              'type': 'video',
+              'url': imageUrl,
+              'images': [imageUrl],
+            },
+          },
+        ),
+        (
+          name: 'nologo',
+          provider: const NologoProvider(),
+          data: {
+            'code': 200,
+            'data': {
+              'type': 'video',
+              'url': imageUrl,
+              'pics': [imageUrl],
+            },
+          },
+        ),
+        (
+          name: 'qzxdp',
+          provider: const QzxdpProvider(),
+          data: {
+            'data': {
+              'url': imageUrl,
+              'images': [imageUrl],
+            },
+          },
+        ),
+        (
+          name: 'snapany',
+          provider: const SnapAnyProvider(),
+          data: {
+            'code': 0,
+            'medias': [
+              {
+                'media_type': 'video',
+                'resource_url': imageUrl,
+                'preview_url': imageUrl,
+                'formats': [
+                  {'video_url': imageUrl},
+                ],
+              },
+            ],
+          },
+        ),
+        (
+          name: 'cobalt',
+          provider: const WoofMonsterProvider(),
+          data: {
+            'status': 'picker',
+            'picker': [
+              {'type': 'video', 'url': imageUrl},
+            ],
+          },
+        ),
+      ];
+
+      for (final item in cases) {
+        final dio = Dio()
+          ..interceptors.add(
+            InterceptorsWrapper(
+              onRequest: (options, handler) {
+                handler.resolve(
+                  Response<Object?>(
+                    requestOptions: options,
+                    statusCode: 200,
+                    data: item.data,
+                  ),
+                );
+              },
+            ),
+          );
+
+        final result = await item.provider.parse(sourceUrl, dio);
+
+        expect(result.mediaType, ParseMediaType.gallery, reason: item.name);
+        expect(result.videos, isEmpty, reason: item.name);
+        expect(result.images, isNotEmpty, reason: item.name);
+      }
+    });
+
     test('SPAPI 重试请求使用首页返回的动态 AppKey', () async {
       const dynamicAppKey = 'dynamic-session-key';
       const inputUrl = 'https://example.com/share';

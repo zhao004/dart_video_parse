@@ -54,10 +54,21 @@ abstract class CobaltProvider extends _JsonProvider {
     final isAudio =
         mimeType.startsWith('audio/') ||
         filename.toLowerCase().endsWith('.mp3');
+    final media = normalizeMediaResources([
+      {
+        'url': directUrl,
+        'type': mimeType.isEmpty ? filename : mimeType,
+        'quality': '原画',
+      },
+    ]);
     return ParseResult(
-      type: 'video',
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: filename,
-      videos: isAudio ? const [] : [VideoItem(url: directUrl, quality: '原画')],
+      cover: media.images.isEmpty ? '' : media.images.first.url,
+      videos: isAudio ? const [] : media.videos,
+      images: isAudio ? const [] : media.images,
       music: isAudio ? MusicInfo(title: filename, url: directUrl) : null,
       platform: safeString(payload['service'], defaultValue: 'cobalt'),
       sourceUrl: sourceUrl,
@@ -66,28 +77,26 @@ abstract class CobaltProvider extends _JsonProvider {
   }
 
   ParseResult _normalizePicker(Map<String, Object?> payload, String sourceUrl) {
-    final videos = <VideoItem>[];
-    final images = <ImageItem>[];
+    final media = _MediaResources();
     for (final item in ParseUtils.listValue(payload['picker'])) {
       final map = ParseUtils.mapValue(item);
-      final url = safeString(map['url']);
-      if (url.isEmpty) {
-        continue;
-      }
-      if (safeString(map['type']) == 'photo') {
-        images.add(ImageItem(url: url));
-      } else {
-        videos.add(VideoItem(url: url, quality: '默认'));
-      }
+      media.add({
+        'url': map['url'],
+        'type': map['type'],
+        'quality': map['quality'] ?? '默认',
+      }, defaultQuality: '默认');
     }
-    if (videos.isEmpty && images.isEmpty) {
+    if (media.isEmpty) {
       throw ProviderException('$displayName picker 场景未返回有效资源');
     }
     final audioUrl = safeString(payload['audio']);
     return ParseResult(
-      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
-      videos: videos,
-      images: images,
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
+      cover: media.images.isEmpty ? '' : media.images.first.url,
+      videos: media.videos,
+      images: media.images,
       music: audioUrl.isEmpty
           ? null
           : MusicInfo(
@@ -115,10 +124,23 @@ abstract class CobaltProvider extends _JsonProvider {
     final output = ParseUtils.mapValue(payload['output']);
     final filename = safeString(output['filename']);
     final isAudio = safeString(output['type']).startsWith('audio/');
+    final media = normalizeMediaResources([
+      {
+        'url': directUrl,
+        'type': safeString(output['type']).isEmpty
+            ? filename
+            : safeString(output['type']),
+        'quality': '原画',
+      },
+    ]);
     return ParseResult(
-      type: 'video',
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: filename,
-      videos: isAudio ? const [] : [VideoItem(url: directUrl, quality: '原画')],
+      cover: media.images.isEmpty ? '' : media.images.first.url,
+      videos: isAudio ? const [] : media.videos,
+      images: isAudio ? const [] : media.images,
       music: isAudio ? MusicInfo(title: filename, url: directUrl) : null,
       platform: safeString(payload['service'], defaultValue: 'cobalt'),
       sourceUrl: sourceUrl,

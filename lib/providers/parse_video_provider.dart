@@ -66,28 +66,20 @@ class ParseVideoProvider extends _JsonProvider {
   }
 
   ParseResult _normalize(Map<String, Object?> data, String sourceUrl) {
-    final images = normalizeImages(
-      data['images'] ?? data['image_list'] ?? data['pics'],
-    );
-    final videoUrl = safeString(
+    final media = normalizeMediaResources([
       data['video_url'] ?? data['video'] ?? data['url'],
-    );
-    final videos = <VideoItem>[
-      if (videoUrl.isNotEmpty) VideoItem(url: videoUrl, quality: '原画'),
-    ];
-    final backupUrl = safeString(data['backup_url']);
-    if (backupUrl.isNotEmpty && backupUrl != videoUrl) {
-      videos.add(VideoItem(url: backupUrl, quality: '备用'));
-    }
-    final isGallery = images.isNotEmpty && videos.isEmpty;
+      data['backup_url'],
+      data['images'] ?? data['image_list'] ?? data['pics'],
+    ]);
+    final isGallery = media.images.isNotEmpty && media.videos.isEmpty;
     return ParseResult(
       type: isGallery ? 'gallery' : 'video',
       title: safeString(data['title'] ?? data['desc']),
       author: safeString(data['author'] ?? data['nickname']),
       cover: safeString(data['cover'] ?? data['cover_url'] ?? data['image']),
       duration: safeString(data['duration']),
-      videos: videos,
-      images: isGallery ? images : const [],
+      videos: media.videos,
+      images: media.images,
       music: normalizeMusic(data),
       platform: safeString(data['platform']),
       sourceUrl: sourceUrl,

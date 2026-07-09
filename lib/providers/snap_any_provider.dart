@@ -58,9 +58,7 @@ class SnapAnyProvider extends _JsonProvider {
     if (medias.isEmpty) {
       throw const ProviderException('SnapAny 未返回媒体资源');
     }
-    final videos = <VideoItem>[];
-    final images = <ImageItem>[];
-    final seen = <String>{};
+    final mediaResources = _MediaResources();
     var cover = '';
     for (final media in medias) {
       final map = ParseUtils.mapValue(media);
@@ -70,40 +68,36 @@ class SnapAnyProvider extends _JsonProvider {
       cover = cover.isEmpty
           ? (previewUrl.isEmpty ? resourceUrl : previewUrl)
           : cover;
-      if (mediaType == 'video') {
-        if (resourceUrl.isNotEmpty && seen.add(resourceUrl)) {
-          videos.add(VideoItem(url: resourceUrl, quality: '默认'));
-        }
-        for (final item in ParseUtils.listValue(map['formats'])) {
-          final format = ParseUtils.mapValue(item);
-          final videoUrl = safeString(format['video_url']);
-          if (videoUrl.isNotEmpty && seen.add(videoUrl)) {
-            videos.add(
-              VideoItem(
-                url: videoUrl,
-                quality: safeString(
-                  format['quality_note'] ?? format['quality'],
-                  defaultValue: '默认',
-                ),
-              ),
-            );
-          }
-        }
-      } else if (resourceUrl.isNotEmpty) {
-        images.add(ImageItem(url: resourceUrl));
-      } else if (previewUrl.isNotEmpty) {
-        images.add(ImageItem(url: previewUrl));
+      mediaResources.add(
+        {'resource_url': resourceUrl, 'media_type': mediaType, 'quality': '默认'},
+        defaultQuality: '默认',
+        fallbackKind: mediaType == 'image' || mediaType == 'photo'
+            ? 'image'
+            : 'video',
+      );
+      for (final item in ParseUtils.listValue(map['formats'])) {
+        final format = ParseUtils.mapValue(item);
+        mediaResources.add({
+          'video_url': format['video_url'],
+          'media_type': format['media_type'] ?? 'video',
+          'quality': format['quality_note'] ?? format['quality'],
+        }, defaultQuality: '默认');
+      }
+      if (resourceUrl.isEmpty && ParseUtils.isHttpUrl(previewUrl)) {
+        mediaResources.add({'url': previewUrl, 'type': 'image'});
       }
     }
-    if (videos.isEmpty && images.isEmpty) {
+    if (mediaResources.isEmpty) {
       throw const ProviderException('SnapAny 未返回可用资源');
     }
     return ParseResult(
-      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
+      type: mediaResources.images.isNotEmpty && mediaResources.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: safeString(payload['text']),
       cover: cover,
-      videos: videos,
-      images: images,
+      videos: mediaResources.videos,
+      images: mediaResources.images,
       sourceUrl: sourceUrl,
       parserUsed: name,
     );

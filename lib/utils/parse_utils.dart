@@ -21,12 +21,20 @@ abstract final class ParseUtils {
   }
 
   /// 将响应体解析为 Map；结构不匹配时返回空 Map，由 Provider 决定错误策略。
+  ///
+  /// 异常策略：纯 URL、普通文本等非 JSON 字符串不能向外抛出格式化异常，
+  /// 因为解析源归一层会先尝试把动态字段当结构读取，再按字符串兜底处理。
   static Map<String, Object?> mapValue(Object? value) {
     if (value is Map) {
       return value.map((key, item) => MapEntry(key.toString(), item));
     }
     if (value is String && value.trim().isNotEmpty) {
-      final decoded = jsonDecode(value);
+      Object? decoded;
+      try {
+        decoded = jsonDecode(value);
+      } on FormatException {
+        return <String, Object?>{};
+      }
       if (decoded is Map) {
         return decoded.map((key, item) => MapEntry(key.toString(), item));
       }
@@ -59,6 +67,55 @@ abstract final class ParseUtils {
       return text.trim();
     }
     return match.group(0)!.trim();
+  }
+
+  /// 判断字符串是否为可请求的 HTTP/HTTPS URL。
+  static bool isHttpUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    return uri != null &&
+        uri.hasScheme &&
+        uri.hasAuthority &&
+        (uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
+  /// 判断 URL 是否明显指向图片资源。
+  ///
+  /// 设计意图：部分解析源会把图集图片塞进视频列表，不能只相信上游
+  /// `fileType` 字段。这里按路径、查询参数和常见 CDN 标识做保守判断。
+  static bool isImageUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) {
+      return false;
+    }
+    final path = uri.path.toLowerCase();
+    final query = uri.query.toLowerCase();
+    return path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.png') ||
+        path.endsWith('.webp') ||
+        path.endsWith('.gif') ||
+        path.endsWith('.heic') ||
+        query.contains('mime_type=image') ||
+        query.contains('sc=image') ||
+        query.contains('biz_tag=aweme_images') ||
+        value.toLowerCase().contains('tplv-dy-aweme-images');
+  }
+
+  /// 判断 URL 是否明显指向视频资源。
+  static bool isVideoUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) {
+      return false;
+    }
+    final path = uri.path.toLowerCase();
+    final query = uri.query.toLowerCase();
+    return path.endsWith('.mp4') ||
+        path.endsWith('.mov') ||
+        path.endsWith('.m3u8') ||
+        path.endsWith('.webm') ||
+        query.contains('mime_type=video') ||
+        query.contains('playaddrkey=') ||
+        value.toLowerCase().contains('/video/');
   }
 
   /// 通过输入链接粗略推断来源平台，用于 Provider 未返回平台字段时兜底。

@@ -79,30 +79,38 @@ class KedouProvider extends _JsonProvider {
 
   ParseResult _normalize(Map<String, Object?> data, String sourceUrl) {
     final videos = <VideoItem>[];
+    final images = <ImageItem>[];
     var cover = '';
     for (final item in ParseUtils.listValue(data['videoItemVoList'])) {
       final map = ParseUtils.mapValue(item);
       final baseUrl = safeString(map['baseUrl']);
-      if (safeString(map['fileType']) == 'video' && baseUrl.isNotEmpty) {
+      if (!ParseUtils.isHttpUrl(baseUrl)) {
+        continue;
+      }
+      final fileType = safeString(map['fileType']).toLowerCase();
+      if (ParseUtils.isImageUrl(baseUrl) ||
+          (fileType == 'image' && !ParseUtils.isVideoUrl(baseUrl))) {
+        images.add(ImageItem(url: baseUrl));
+        cover = cover.isEmpty ? baseUrl : cover;
+      } else if (ParseUtils.isVideoUrl(baseUrl) ||
+          (fileType == 'video' && !ParseUtils.isImageUrl(baseUrl))) {
         videos.add(
           VideoItem(
             url: baseUrl,
             quality: safeString(map['quality'], defaultValue: '原画'),
           ),
         );
-      } else if (safeString(map['fileType']) == 'image' &&
-          baseUrl.isNotEmpty &&
-          cover.isEmpty) {
-        cover = baseUrl;
       }
     }
-    final images = videos.isEmpty
-        ? normalizeImages(data['images'] ?? data['image_list'] ?? data['pics'])
-        : <ImageItem>[];
+    if (images.isEmpty) {
+      images.addAll(
+        normalizeImages(data['images'] ?? data['image_list'] ?? data['pics']),
+      );
+    }
     final fallbackVideo = safeString(
       data['video_url'] ?? data['video'] ?? data['url'],
     );
-    if (videos.isEmpty && fallbackVideo.isNotEmpty) {
+    if (videos.isEmpty && ParseUtils.isVideoUrl(fallbackVideo)) {
       videos.add(VideoItem(url: fallbackVideo, quality: '原画'));
     }
     return ParseResult(

@@ -69,46 +69,31 @@ class BugPkProvider extends _JsonProvider {
 
   ParseResult _normalize(Map<String, Object?> data, String sourceUrl) {
     final type = safeString(data['type']).toLowerCase();
-    final videoUrl = safeString(data['url']);
-    final videos = <VideoItem>[
-      if (videoUrl.isNotEmpty)
-        VideoItem(
-          url: videoUrl,
-          quality: safeString(data['quality'], defaultValue: '原画'),
-        ),
-    ];
-    for (final item in ParseUtils.listValue(data['video_backup'])) {
-      final map = ParseUtils.mapValue(item);
-      final backupUrl = safeString(map['url']);
-      if (backupUrl.isNotEmpty) {
-        videos.add(
-          VideoItem(
-            url: backupUrl,
-            quality: safeString(map['quality'], defaultValue: '备用'),
-          ),
-        );
-      }
-    }
-    final images = normalizeImages(data['images'] ?? data['urls']);
-    if (videos.isEmpty && images.isEmpty) {
+    final fallbackKind = {'img', 'image', 'images', 'normal'}.contains(type)
+        ? 'image'
+        : 'video';
+    final media = normalizeMediaResources(
+      [data['url'], data['video_backup'], data['images'] ?? data['urls']],
+      defaultQuality: safeString(data['quality'], defaultValue: '原画'),
+      fallbackKind: fallbackKind,
+    );
+    if (media.isEmpty) {
       throw const ProviderException('BK-SV 未返回可用资源');
     }
     final cover = safeString(
       data['cover'] ?? data['coverUrl'],
-      defaultValue: images.isEmpty ? '' : images.first.url,
+      defaultValue: media.images.isEmpty ? '' : media.images.first.url,
     );
     return ParseResult(
-      type:
-          {'img', 'image', 'images', 'normal'}.contains(type) ||
-              (images.isNotEmpty && videos.isEmpty)
+      type: media.images.isNotEmpty && media.videos.isEmpty
           ? 'gallery'
           : 'video',
       title: safeString(data['title'] ?? data['desc']),
       author: _extractAuthor(data['author']),
       cover: cover,
       duration: safeString(data['time']),
-      videos: videos,
-      images: images,
+      videos: media.videos,
+      images: media.images,
       music: normalizeMusic(data),
       platform: ParseUtils.inferPlatform(sourceUrl),
       sourceUrl: sourceUrl,

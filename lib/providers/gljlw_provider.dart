@@ -50,6 +50,7 @@ class GljlwProvider extends BaseVideoProvider {
       throw const ProviderException('GLJLW 当前 IP 已被限流，请稍后重试');
     }
     final videos = <VideoItem>[];
+    final images = <ImageItem>[];
     final seen = <String>{};
     for (final match in RegExp(
       '<textarea[^>]*>(.*?)</textarea>',
@@ -57,7 +58,12 @@ class GljlwProvider extends BaseVideoProvider {
       caseSensitive: false,
     ).allMatches(html)) {
       final videoUrl = ParseUtils.cleanHtmlText(match.group(1) ?? '');
-      if (videoUrl.isNotEmpty && seen.add(videoUrl)) {
+      if (!ParseUtils.isHttpUrl(videoUrl) || !seen.add(videoUrl)) {
+        continue;
+      }
+      if (ParseUtils.isImageUrl(videoUrl)) {
+        images.add(ImageItem(url: videoUrl));
+      } else {
         videos.add(VideoItem(url: videoUrl, quality: '默认'));
       }
     }
@@ -69,7 +75,12 @@ class GljlwProvider extends BaseVideoProvider {
       final videoUrl = href.contains('jlwdown=')
           ? href.split('jlwdown=').last
           : href;
-      if (videoUrl.isNotEmpty && seen.add(videoUrl)) {
+      if (!ParseUtils.isHttpUrl(videoUrl) || !seen.add(videoUrl)) {
+        continue;
+      }
+      if (ParseUtils.isImageUrl(videoUrl)) {
+        images.add(ImageItem(url: videoUrl));
+      } else {
         videos.add(
           VideoItem(
             url: videoUrl,
@@ -78,11 +89,11 @@ class GljlwProvider extends BaseVideoProvider {
         );
       }
     }
-    if (videos.isEmpty) {
-      throw const ProviderException('GLJLW 未返回可用的视频直链');
+    if (videos.isEmpty && images.isEmpty) {
+      throw const ProviderException('GLJLW 未返回可用的视频或图集资源');
     }
     return ParseResult(
-      type: 'video',
+      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
       title: _extractHtmlField(html, r'标题：</strong>\s*([^<]+)'),
       author: _extractHtmlField(html, r'作者：</strong>\s*([^<]+)'),
       cover: _extractHtmlField(
@@ -90,6 +101,7 @@ class GljlwProvider extends BaseVideoProvider {
         r'作品截图：</strong>\s*</p>\s*<img\s+src="([^"]+)"',
       ),
       videos: videos,
+      images: images,
       platform: ParseUtils.inferPlatform(sourceUrl),
       sourceUrl: sourceUrl,
       parserUsed: name,

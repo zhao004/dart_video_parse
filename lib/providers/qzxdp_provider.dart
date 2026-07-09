@@ -51,24 +51,18 @@ class QzxdpProvider extends _JsonProvider {
   }
 
   ParseResult _normalize(Map<String, Object?> data, String sourceUrl) {
-    final images = normalizeImages(data['images'] ?? data['image_list']);
-    final videoUrl = safeString(
+    final media = normalizeMediaResources([
       data['video_url'] ??
           data['video'] ??
           data['url'] ??
           data['nwm_video_url'],
-    );
-    final videos = <VideoItem>[
-      if (videoUrl.isNotEmpty) VideoItem(url: videoUrl, quality: '原画'),
-    ];
-    final noWatermarkUrl = safeString(
       data['nwm_video_url'] ?? data['video_nwm'],
-    );
-    if (noWatermarkUrl.isNotEmpty && noWatermarkUrl != videoUrl) {
-      videos.add(VideoItem(url: noWatermarkUrl, quality: '无水印'));
-    }
+      data['images'] ?? data['image_list'],
+    ]);
     return ParseResult(
-      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: safeString(data['title'] ?? data['desc'] ?? data['description']),
       author: safeString(
         data['author'] ?? data['nickname'] ?? data['author_name'],
@@ -80,8 +74,8 @@ class QzxdpProvider extends _JsonProvider {
             data['thumbnail'],
       ),
       duration: safeString(data['duration']),
-      videos: videos,
-      images: images,
+      videos: media.videos,
+      images: media.images,
       music: normalizeMusic(data),
       platform: safeString(data['platform'] ?? data['source']),
       sourceUrl: sourceUrl,

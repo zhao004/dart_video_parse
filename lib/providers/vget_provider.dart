@@ -51,9 +51,10 @@ class VgetProvider extends BaseVideoProvider {
       if (fileUrl.isEmpty || !seen.add(fileUrl)) {
         continue;
       }
-      if ({'jpg', 'jpeg', 'png', 'webp'}.contains(ext)) {
+      if ({'jpg', 'jpeg', 'png', 'webp'}.contains(ext) ||
+          ParseUtils.isImageUrl(fileUrl)) {
         images.add(ImageItem(url: fileUrl));
-      } else if (ext != 'mhtml') {
+      } else if (ext != 'mhtml' && !ParseUtils.isImageUrl(fileUrl)) {
         videos.add(
           VideoItem(url: fileUrl, quality: label.isEmpty ? ext : label),
         );

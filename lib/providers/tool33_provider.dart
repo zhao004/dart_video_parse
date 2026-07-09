@@ -89,32 +89,26 @@ class Tool33Provider extends _JsonProvider {
     String sourceUrl,
     String platform,
   ) {
-    final images = normalizeImages(
-      data['images'] ?? data['imageList'] ?? data['pics'],
-    );
-    final videoUrl = safeString(
+    final media = normalizeMediaResources([
       data['videoUrl'] ?? data['video_url'] ?? data['video'] ?? data['url'],
-    );
-    final videos = <VideoItem>[
-      if (videoUrl.isNotEmpty) VideoItem(url: videoUrl, quality: '原画'),
-    ];
-    final backupUrl = safeString(data['backupUrl'] ?? data['backup_url']);
-    if (backupUrl.isNotEmpty && backupUrl != videoUrl) {
-      videos.add(VideoItem(url: backupUrl, quality: '备用'));
-    }
-    if (videos.isEmpty && images.isEmpty) {
+      data['backupUrl'] ?? data['backup_url'],
+      data['images'] ?? data['imageList'] ?? data['pics'],
+    ]);
+    if (media.isEmpty) {
       throw const ProviderException('33tool 未返回可用视频或图集资源');
     }
     return ParseResult(
-      type: images.isNotEmpty && videos.isEmpty ? 'gallery' : 'video',
+      type: media.images.isNotEmpty && media.videos.isEmpty
+          ? 'gallery'
+          : 'video',
       title: safeString(data['title'] ?? data['desc'] ?? data['description']),
       author: safeString(
         data['author'] ?? data['nickname'] ?? data['authorName'],
       ),
       cover: safeString(data['coverUrl'] ?? data['cover'] ?? data['image']),
       duration: safeString(data['duration']),
-      videos: videos,
-      images: images,
+      videos: media.videos,
+      images: media.images,
       music: normalizeMusic(data),
       platform: safeString(data['platform'], defaultValue: platform),
       sourceUrl: sourceUrl,
