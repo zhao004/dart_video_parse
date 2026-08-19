@@ -1,6 +1,7 @@
 # dart_video_parse
 
-`dart_video_parse` 是一个面向 Flutter Android/iOS 的聚合视频解析包。它把多个解析源封装成统一 Dart 调用入口，让用户设备直接通过自身网络访问解析源，减少业务服务端代理、带宽和 IP 压力。
+`dart_video_parse` 是一个面向 Flutter Android/iOS 的聚合视频解析包。它把多个解析源封装成统一的 Dart
+调用入口，让用户设备直接通过自身网络访问解析源，减少业务服务端代理、带宽和 IP 压力。
 
 ## 功能定位
 
@@ -26,7 +27,7 @@ analysis_options.yaml     # flutter_lints 静态分析配置
 
 ## 安装与接入
 
-在 Flutter 项目的 `pubspec.yaml` 中添加依赖：
+在 Flutter 项目的 `pubspec.yaml` 中添加依赖。当前仓库本地开发可使用路径依赖：
 
 ```yaml
 dependencies:
@@ -46,46 +47,84 @@ flutter pub get
 import 'package:dart_video_parse/dart_video_parse.dart';
 ```
 
-## 预期使用方式
+## 基本用法
 
-公共 API 保持 Flutter 侧调用简单、结果结构稳定，并明确区分解析成功、输入非法、来源不支持和网络异常等情况。
+### 轮询解析
+
+`parse` 会按优先级调用所有已启用的解析源，并返回首个包含有效视频或图片资源的结果。输入可以是纯 URL，也可以是包含 URL 的分享文案。
+
+```dart
+Future<void> parseExample() async {
+  final parser = VideoParser();
+  final response = await parser.parse('https://example.com/video');
+
+  if (!response.success || response.data == null) {
+    print('解析失败 [${response.code}]: ${response.msg}');
+    return;
+  }
+
+  final result = response.data!;
+  if (result.isVideo && result.videos.isNotEmpty) {
+    final playableUrl = result.videos.first.url;
+    print('视频地址: $playableUrl');
+  } else if (result.isGallery && result.images.isNotEmpty) {
+    print('图集包含 ${result.images.length} 张图片');
+  }
+}
+```
+
+`response.success` 可用于判断是否成功；失败时 `data` 为 `null`，可通过 `code` 和 `msg` 读取错误信息。`ParseResult.mediaType`、`isVideo` 和 `isGallery` 用于区分视频与图集结果。
+
+### 指定解析源
+
+只调用指定的解析源时，使用 `parseByProvider`：
+
+```dart
+Future<void> parseByProviderExample() async {
+  final parser = VideoParser();
+  final response = await parser.parseByProvider(
+    'https://example.com/video',
+    VideoParseProvider.kit9,
+  );
+  print(response.msg);
+}
+```
+
+如果指定的解析源未注册或解析失败，该方法会返回失败的 `ParseResponse`，不会把 Provider 异常直接抛给调用方。
+
+### 列出解析源
+
+`listProviders` 返回当前 `VideoParser` 实例中已启用的解析源；传入自定义 Provider 列表时，返回值会按优先级排序。
 
 ```dart
 final parser = VideoParser();
-
-// 按内置优先级轮询解析源，首个有效结果会返回成功。
-final response = await parser.parse('https://example.com/video');
-
-if (response.success) {
-  final result = response.data!;
-  final playableUrl = result.videos.isNotEmpty ? result.videos.first.url : '';
-}
-```
-
-指定解析源：
-
-```dart
-final response = await parser.parseByProvider(
-  'https://example.com/video',
-  VideoParseProvider.kit9,
-);
-```
-
-列出解析源：
-
-```dart
 final providers = parser.listProviders();
-```
-
-探测用户当前网络到各解析源的状态：
-
-```dart
-final statuses = await parser.listProvidersStatus();
-
-for (final status in statuses) {
-  print('${status.name}: ${status.latencyMs}ms ${status.available}');
+for (final provider in providers) {
+  print(
+    '${provider.name}: ${provider.displayName} '
+    '(priority=${provider.priority}, enabled=${provider.enabled})',
+  );
 }
 ```
+
+### 探测解析源状态
+
+`listProvidersStatus` 会并发请求各解析源的探测地址，返回当前设备网络下的可达性和延迟信息：
+
+```dart
+Future<void> probeProvidersExample() async {
+  final parser = VideoParser();
+  final statuses = await parser.listProvidersStatus();
+  for (final status in statuses) {
+    final latency = status.latencyMs == null
+        ? '失败'
+        : '${status.latencyMs} ms';
+    print('${status.name}: available=${status.available}, latency=$latency');
+  }
+}
+```
+
+网络探测结果只反映探测请求是否可达，不代表该解析源一定能成功解析某个具体链接。
 
 ## 当前解析源
 
@@ -107,7 +146,15 @@ for (final status in statuses) {
 14. `snapany`
 15. `qzxdp`
 
-说明：`xtdowner` 已保留 Provider 入口和状态探测入口，但其解析签名依赖原站 WASM 运行时。当前移动端纯 Dart 版本会返回明确失败，不会阻断其它解析源轮询。
+说明：`xtdowner` 已保留 Provider 入口和状态探测入口，但其解析签名依赖原站 WASM 运行时。当前移动端纯 Dart
+版本会返回明确失败，不会阻断其它解析源轮询。
+
+## 输入与错误处理
+
+- 仅接受 `http://` 或 `https://` 链接；空字符串、非法 URL 和其他协议会返回 `ParseCodes.badRequest`。
+- 粘贴分享文案时，解析器会先提取其中出现的第一个 HTTP/HTTPS 链接。
+- 所有默认解析源都失败时，`response.success` 为 `false`，应使用 `code` 和 `msg` 展示或记录错误。
+- 解析结果只有包含至少一个有效视频或图片地址时才会被视为成功结果。
 
 ## 开发命令
 
@@ -143,6 +190,15 @@ flutter test
 ```bash
 flutter pub publish --dry-run
 ```
+
+## 相关链接
+
+- 社区：[Linux.do](https://linux.do/)
+- 更多开源项目：[zhao04 的公开主题](https://linux.do/u/zhao04/activity/topics)
+
+## 免责声明
+
+本项目中的数据来源于互联网收集。如涉及侵权，请提交 Issue，我将及时删除相关内容。
 
 ## 许可证
 
